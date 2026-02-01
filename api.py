@@ -281,14 +281,14 @@ async def upload_csv_file(
         )
     
     # Generate custom filename or use default naming
-    if name and rakat_count:
-        # Custom naming: name_rakat_date_time.csv
+    if name:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{name}_{rakat_count}_{timestamp}.csv"
-    elif name and category_type == "non_namaz":
-        # For non-namaz: name_date_time.csv
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{name}_{timestamp}.csv"
+        if category_type == "namaz" and rakat_count:
+            # Namaz naming: name_rakat_category_date_time.csv
+            filename = f"{name}_{rakat_count}_{category}_{timestamp}.csv"
+        else:
+            # Non-namaz naming: name_category_date_time.csv
+            filename = f"{name}_{category}_{timestamp}.csv"
     else:
         # Default naming: timestamp_random_original.csv
         file_id = str(uuid.uuid4())[:8]
