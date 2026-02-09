@@ -196,7 +196,181 @@ Delete a specific training data file.
 curl -X DELETE "http://localhost:8000/data/namaz/standing_loose_clothing/20240130_143052_file.csv"
 ```
 
-### 8. Download Model
+### 8. Data Listing Endpoints
+**GET** `/data`
+
+Get listing of all data in root data folder with file counts.
+
+**Response:**
+```json
+{
+  "path": "data",
+  "type": "root",
+  "categories": {
+    "namaz": {
+      "type": "category",
+      "subcategories": [
+        {
+          "name": "2_rakat",
+          "file_count": 25,
+          "path": "namaz/2_rakat"
+        },
+        {
+          "name": "3_rakat", 
+          "file_count": 18,
+          "path": "namaz/3_rakat"
+        },
+        {
+          "name": "4_rakat",
+          "file_count": 12,
+          "path": "namaz/4_rakat"
+        }
+      ],
+      "total_files": 55
+    },
+    "non_namaz": {
+      "type": "category",
+      "subcategories": [
+        {
+          "name": "walking",
+          "file_count": 30,
+          "path": "non_namaz/walking"
+        },
+        {
+          "name": "running",
+          "file_count": 25,
+          "path": "non_namaz/running"
+        }
+      ],
+      "total_files": 55
+    }
+  },
+  "total_files": 110
+}
+```
+
+---
+
+**GET** `/data/{category}`
+
+Get listing of files in a specific category (namaz or non_namaz).
+
+**Examples:**
+- `GET /data/namaz` - List all namaz rakat counts
+- `GET /data/non_namaz` - List all non_namaz activities
+
+**Response:**
+```json
+{
+  "path": "data/namaz",
+  "type": "category",
+  "name": "namaz",
+  "subcategories": [
+    {
+      "name": "2_rakat",
+      "file_count": 25,
+      "path": "namaz/2_rakat"
+    }
+  ],
+  "files": [],
+  "total_files": 25
+}
+```
+
+---
+
+**GET** `/data/namaz/{rakat_count}`
+
+Get listing of files in a specific namaz rakat count directory.
+
+**Examples:**
+- `GET /data/namaz/2_rakat` - List 2 rakat namaz subcategories
+- `GET /data/namaz/3_rakat` - List 3 rakat namaz subcategories
+- `GET /data/namaz/4_rakat` - List 4 rakat namaz subcategories
+
+**Response:**
+```json
+{
+  "path": "data/namaz/2_rakat",
+  "type": "rakat_count",
+  "name": "2_rakat",
+  "subcategories": [
+    {
+      "name": "standing_loose_clothing",
+      "file_count": 15,
+      "path": "namaz/2_rakat/standing_loose_clothing"
+    },
+    {
+      "name": "standing_tight_clothing",
+      "file_count": 10,
+      "path": "namaz/2_rakat/standing_tight_clothing"
+    }
+  ],
+  "files": [],
+  "total_files": 25
+}
+```
+
+---
+
+**GET** `/data/namaz/{rakat_count}/{subcategory}`
+
+Get listing of CSV files in a specific namaz subcategory.
+
+**Examples:**
+- `GET /data/namaz/2_rakat/standing_loose_clothing` - List files in 2 rakat standing loose clothing
+- `GET /data/namaz/3_rakat/sitting_floor` - List files in 3 rakat sitting floor
+
+**Response:**
+```json
+{
+  "path": "data/namaz/2_rakat/standing_loose_clothing",
+  "type": "subcategory",
+  "name": "standing_loose_clothing",
+  "rakat_count": "2_rakat",
+  "files": [
+    {
+      "name": "user1_2_rakat_standing_loose_clothing_20240130_143052.csv",
+      "size": 15420,
+      "modified": "2024-01-30T14:30:52.123456",
+      "path": "namaz/2_rakat/standing_loose_clothing/user1_2_rakat_standing_loose_clothing_20240130_143052.csv"
+    }
+  ],
+  "total_files": 15
+}
+```
+
+---
+
+**GET** `/data/non_namaz/{category}`
+
+Get listing of CSV files in a specific non_namaz activity category.
+
+**Examples:**
+- `GET /data/non_namaz/walking` - List walking activity files
+- `GET /data/non_namaz/running` - List running activity files
+- `GET /data/non_namaz/sitting_floor` - List sitting floor activity files
+- `GET /data/non_namaz/sitting_chair` - List sitting chair activity files
+
+**Response:**
+```json
+{
+  "path": "data/non_namaz/walking",
+  "type": "non_namaz_category",
+  "name": "walking",
+  "files": [
+    {
+      "name": "user1_walking_20240130_143052.csv",
+      "size": 12450,
+      "modified": "2024-01-30T14:30:52.123456",
+      "path": "non_namaz/walking/user1_walking_20240130_143052.csv"
+    }
+  ],
+  "total_files": 30
+}
+```
+
+### 9. Download Model
 **GET** `/download/model`
 
 Download the trained model file.

@@ -19,7 +19,7 @@ import uuid
 from datetime import datetime
 import json
 import subprocess
-from typing import Optional
+from typing import Optional, List
 import asyncio
 import io
 
@@ -40,9 +40,9 @@ app.add_middleware(
 )
 
 # Configuration
-DATA_DIR = Path("data")
-MODELS_DIR = Path("models")
-UPLOAD_DIR = Path("uploads")
+DATA_DIR = Path(__file__).parent / "data"
+MODELS_DIR = Path(__file__).parent / "models"
+UPLOAD_DIR = Path(__file__).parent / "uploads"
 
 # Valid subcategories
 VALID_NAMAZ_SUBCATEGORIES = [
@@ -157,6 +157,53 @@ def get_data_statistics():
     
     return stats
 
+def get_files_in_directory(directory_path: Path) -> List[dict]:
+    """Get list of CSV files in a directory with metadata."""
+    files = []
+    if not directory_path.exists():
+        return files
+    
+    for file_path in directory_path.iterdir():
+        if file_path.is_file() and file_path.suffix == '.csv':
+            try:
+                # Get file size and modification time
+                stat = file_path.stat()
+                files.append({
+                    "name": file_path.name,
+                    "size": stat.st_size,
+                    "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                    "path": str(file_path.relative_to(DATA_DIR))
+                })
+            except Exception:
+                continue
+    
+    return sorted(files, key=lambda x: x["name"])
+
+def get_subdirectories(directory_path: Path) -> List[dict]:
+    """Get list of subdirectories with cumulative file counts."""
+    subdirs = []
+    if not directory_path.exists():
+        return subdirs
+    
+    for subdir_path in directory_path.iterdir():
+        if subdir_path.is_dir():
+            # Count CSV files in this subdirectory and all its subdirectories (cumulative)
+            csv_files = len([f for f in subdir_path.rglob("*.csv") if f.is_file()])
+            subdirs.append({
+                "name": subdir_path.name,
+                "file_count": csv_files,
+                "path": str(subdir_path.relative_to(DATA_DIR))
+            })
+    
+    return sorted(subdirs, key=lambda x: x["name"])
+
+def count_csv_files_in_directory(directory_path: Path) -> int:
+    """Count all CSV files in a directory and its subdirectories."""
+    if not directory_path.exists():
+        return 0
+    
+    return len([f for f in directory_path.rglob("*.csv") if f.is_file()])
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize API on startup."""
@@ -173,7 +220,9 @@ async def root():
             "train": "/train", 
             "predict": "/predict",
             "status": "/status",
-            "categories": "/categories"
+            "categories": "/categories",
+            "data": "/data",
+            "data_listing": "/data/{path}"
         },
         "supported_format": "CSV with 7 columns: timestamp, gyro_x, gyro_y, gyro_z, acc_x, acc_y, acc_z"
     }
@@ -551,6 +600,157 @@ async def download_model():
         media_type="application/octet-stream",
         filename="namaz_detector.pkl"
     )
+
+@app.get("/data")
+async def get_data_root():
+    """Get listing of all data in root data folder."""
+    result = {
+        "path": "data",
+        "type": "root",
+        "categories": {},
+        "total_files": 0
+    }
+    
+    # List namaz directory
+    namaz_path = DATA_DIR / "namaz"
+    if namaz_path.exists():
+        namaz_subdirs = get_subdirectories(namaz_path)
+        namaz_total = count_csv_files_in_directory(namaz_path)
+        result["categories"]["namaz"] = {
+            "type": "category",
+            "subcategories": namaz_subdirs,
+            "total_files": namaz_total
+        }
+        result["total_files"] += namaz_total
+    
+    # List non_namaz directory
+    non_namaz_path = DATA_DIR / "non_namaz"
+    if non_namaz_path.exists():
+        non_namaz_subdirs = get_subdirectories(non_namaz_path)
+        non_namaz_total = count_csv_files_in_directory(non_namaz_path)
+        result["categories"]["non_namaz"] = {
+            "type": "category",
+            "subcategories": non_namaz_subdirs,
+            "total_files": non_namaz_total
+        }
+        result["total_files"] += non_namaz_total
+    
+    return result
+
+@app.get("/data/{category}")
+async def get_data_category(category: str):
+    """Get listing of files in a category (namaz or non_namaz)."""
+    if category not in ["namaz", "non_namaz"]:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Category '{category}' not found. Available: namaz, non_namaz"
+        )
+    
+    category_path = DATA_DIR / category
+    if not category_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Category directory '{category}' not found"
+        )
+    
+    result = {
+        "path": f"data/{category}",
+        "type": "category",
+        "name": category,
+        "subcategories": get_subdirectories(category_path),
+        "files": get_files_in_directory(category_path),
+        "total_files": count_csv_files_in_directory(category_path)
+    }
+    
+    return result
+
+@app.get("/data/namaz/{rakat_count}")
+async def get_namaz_rakat(rakat_count: str):
+    """Get listing of files in a namaz rakat count directory."""
+    if rakat_count not in VALID_RAKAT_COUNTS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Invalid rakat count '{rakat_count}'. Available: {VALID_RAKAT_COUNTS}"
+        )
+    
+    rakat_path = DATA_DIR / "namaz" / rakat_count
+    if not rakat_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Rakat directory 'namaz/{rakat_count}' not found"
+        )
+    
+    result = {
+        "path": f"data/namaz/{rakat_count}",
+        "type": "rakat_count",
+        "name": rakat_count,
+        "subcategories": get_subdirectories(rakat_path),
+        "files": get_files_in_directory(rakat_path),
+        "total_files": count_csv_files_in_directory(rakat_path)
+    }
+    
+    return result
+
+@app.get("/data/namaz/{rakat_count}/{subcategory}")
+async def get_namaz_subcategory(rakat_count: str, subcategory: str):
+    """Get listing of files in a namaz subcategory directory."""
+    if rakat_count not in VALID_RAKAT_COUNTS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Invalid rakat count '{rakat_count}'. Available: {VALID_RAKAT_COUNTS}"
+        )
+    
+    if subcategory not in VALID_NAMAZ_SUBCATEGORIES:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Invalid subcategory '{subcategory}'. Available: {VALID_NAMAZ_SUBCATEGORIES}"
+        )
+    
+    subcategory_path = DATA_DIR / "namaz" / rakat_count / subcategory
+    if not subcategory_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Subcategory directory 'namaz/{rakat_count}/{subcategory}' not found"
+        )
+    
+    result = {
+        "path": f"data/namaz/{rakat_count}/{subcategory}",
+        "type": "subcategory",
+        "name": subcategory,
+        "rakat_count": rakat_count,
+        "files": get_files_in_directory(subcategory_path),
+        "total_files": len(get_files_in_directory(subcategory_path))
+    }
+    
+    return result
+
+@app.get("/data/non_namaz/{category}")
+async def get_non_namaz_category(category: str):
+    """Get listing of files in a non_namaz category directory."""
+    if category not in VALID_NON_NAMAZ_CATEGORIES:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Invalid non_namaz category '{category}'. Available: {VALID_NON_NAMAZ_CATEGORIES}"
+        )
+    
+    category_path = DATA_DIR / "non_namaz" / category
+    if not category_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Non_namaz category directory 'non_namaz/{category}' not found"
+        )
+    
+    result = {
+        "path": f"data/non_namaz/{category}",
+        "type": "non_namaz_category",
+        "name": category,
+        "files": get_files_in_directory(category_path),
+        "total_files": len(get_files_in_directory(category_path))
+    }
+    
+    return result
+
+
 
 if __name__ == "__main__":
     import uvicorn
